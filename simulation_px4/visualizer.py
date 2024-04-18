@@ -123,19 +123,19 @@ class PX4Visualizer(Node):
 
     def vehicle_local_position_callback(self, msg):
         # TODO: handle NED->ENU transformation 
-        self.vehicle_local_position[0] = msg.x
-        self.vehicle_local_position[1] = -msg.y
+        self.vehicle_local_position[0] = msg.y
+        self.vehicle_local_position[1] = msg.x
         self.vehicle_local_position[2] = -msg.z
-        self.vehicle_local_velocity[0] = msg.vx
-        self.vehicle_local_velocity[1] = -msg.vy
+        self.vehicle_local_velocity[0] = msg.vy
+        self.vehicle_local_velocity[1] = msg.vx
         self.vehicle_local_velocity[2] = -msg.vz
-        self.vehicle_local_angular_velocity[0] = msg.ax
-        self.vehicle_local_angular_velocity[1] = -msg.ay
+        self.vehicle_local_angular_velocity[0] = msg.ay
+        self.vehicle_local_angular_velocity[1] = msg.ax
         self.vehicle_local_angular_velocity[2] = -msg.az
 
     def trajectory_setpoint_callback(self, msg):
-        self.setpoint_position[0] = msg.position[0]
-        self.setpoint_position[1] = -msg.position[1]
+        self.setpoint_position[0] = msg.position[1]
+        self.setpoint_position[1] = msg.position[0]
         self.setpoint_position[2] = -msg.position[2]
 
     def create_arrow_marker(self, id, tail, vector):
