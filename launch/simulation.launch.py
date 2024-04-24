@@ -37,16 +37,21 @@ __contact__ = "braden@arkelectron.com"
 
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetParameter
 from ament_index_python.packages import get_package_share_directory
 import os
 
 
 def generate_launch_description():
     package_dir = get_package_share_directory('simulation_px4')
-    # bash_script_path = os.path.join(package_dir, 'scripts', 'TerminatorScript.sh')
     return LaunchDescription([
-        # ExecuteProcess(cmd=['bash', bash_script_path], output='screen'),
+        SetParameter(name='use_sim_time', value=True),
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='base_link_to_mid360_tf',
+            arguments=['0', '0', '0.05', '0', '0', '0', 'base_link', 'mid360']
+        ),
         Node(
             package='simulation_px4',
             namespace='simulation_px4',
@@ -66,9 +71,5 @@ def generate_launch_description():
             executable='rviz2',
             name='rviz2',
             arguments=['-d', [os.path.join(package_dir, 'visualize.rviz')]]
-        ),
-        Node(
-            package = "tf2_ros", 
-            executable = "static_transform_publisher",
-            arguments = ["0", "0", "0", "0", "0", "0", "odom", "mid360"])
+        )
     ])

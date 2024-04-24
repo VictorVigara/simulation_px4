@@ -54,6 +54,7 @@ from visualization_msgs.msg import Marker
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 
+
 def vector2PoseMsg(frame_id, position, attitude):
     pose_msg = PoseStamped()
     # msg.header.stamp = Clock().now().nanoseconds / 1000
@@ -104,6 +105,7 @@ class PX4Visualizer(Node):
         self.setpoint_path_pub = self.create_publisher(Path, '/px4_visualizer/setpoint_path', 10)
         self.odometry_publisher = self.create_publisher(Odometry, '/odom', 10)
 
+        self.vehicle_attitude_px4 = np.array([1.0, 0.0, 0.0, 0.0])
         self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0.0])
         self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
         self.vehicle_local_velocity = np.array([0.0, 0.0, 0.0])
@@ -113,13 +115,28 @@ class PX4Visualizer(Node):
         self.setpoint_path_msg = Path()
         timer_period = 0.05  # seconds
         self.timer = self.create_timer(timer_period, self.cmdloop_callback)
+    
+    def quaternion_multiply(self, q1, q2):
+        """ Multiply two quaternions. """
+        w1, x1, y1, z1 = q1
+        w2, x2, y2, z2 = q2
+        w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+        x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+        y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+        z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+        return [w, x, y, z]
 
     def vehicle_attitude_callback(self, msg):
         # TODO: handle NED->ENU transformation 
-        self.vehicle_attitude[0] = msg.q[0]
-        self.vehicle_attitude[1] = msg.q[1]
-        self.vehicle_attitude[2] = -msg.q[2]
-        self.vehicle_attitude[3] = -msg.q[3]
+        self.vehicle_attitude_px4[0] = msg.q[0]
+        self.vehicle_attitude_px4[1] = msg.q[1]
+        self.vehicle_attitude_px4[2] = msg.q[2]
+        self.vehicle_attitude_px4[3] = msg.q[3]
+
+        # Rotation quaternion for -90 degrees around the z-axis
+        rotation_quaternion_minus_90 = [np.sqrt(2)/2, 0, 0, -np.sqrt(2)/2]
+        # Rotate the original quaternion
+        self.vehicle_attitude = self.quaternion_multiply(rotation_quaternion_minus_90,self.vehicle_attitude_px4)
 
     def vehicle_local_position_callback(self, msg):
         # TODO: handle NED->ENU transformation 
@@ -191,14 +208,14 @@ class PX4Visualizer(Node):
         
         return odom_msg
 
-    def create_odom_tf(self, position, attitude): 
+    def create_odom_tf(self, position, attitude, parent_frame, child_frame): 
         # tf msg    
         t = TransformStamped()
 
         # Read message content and assign it to corresponding tf variables
         t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_link'
+        t.header.frame_id = parent_frame
+        t.child_frame_id = child_frame
 
         t.transform.translation.x = position[0]
         t.transform.translation.y = position[1]
@@ -234,9 +251,10 @@ class PX4Visualizer(Node):
         odometry_msg = self.create_odom_msg()
         self.odometry_publisher.publish(odometry_msg)
 
-        t = self.create_odom_tf(self.vehicle_local_position, self.vehicle_attitude)
+        t = self.create_odom_tf(self.vehicle_local_position, self.vehicle_attitude, 'odom', 'base_link')
         # Send the transformation
         self.tf_broadcaster.sendTransform(t)
+
 
 def main(args=None):
     rclpy.init(args=args)
