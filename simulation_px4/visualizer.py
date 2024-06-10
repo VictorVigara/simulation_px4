@@ -38,6 +38,8 @@ __contact__ = "jalim@ethz.ch"
 from re import M
 import numpy as np
 import uuid
+import math
+from scipy.spatial.transform import Rotation as R
 
 import rclpy
 from rclpy.node import Node
@@ -58,6 +60,8 @@ from visualization_msgs.msg import Marker
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 
+from .fake_contact_detector import FakeContactDetector
+
 
 def vector2PoseMsg(frame_id, position, attitude):
     pose_msg = PoseStamped()
@@ -77,8 +81,22 @@ class PX4Visualizer(Node):
     def __init__(self):
         super().__init__('px4_visualizer')
 
+        # Box crop pointcloud
         self.x_crop = 0.44
         self.y_crop = 0.44
+
+        # Fake obstacles
+        self.ob1 = [
+            np.array([0, 0.4, 2]),
+            np.array([4, 0.4, 2]),
+            np.array([4, 0.4, -1]), 
+            np.array([0, 0.4, -1]), 
+            ]
+        self.ring_radius = 0.44
+
+        self.rotation_from_world_to_drone = None
+        
+        self.contact_detector = FakeContactDetector(self.ob1, 0.44, self.get_logger)
 
         ## Configure subscritpions
         qos_profile = QoSProfile(
@@ -192,6 +210,20 @@ class PX4Visualizer(Node):
         # Rotate the original quaternion
         self.vehicle_attitude = self.quaternion_multiply(rotation_quaternion_minus_90,self.vehicle_attitude_px4)
 
+        w, x, y, z = self.vehicle_attitude
+
+        self.roll, self.pitch, self.yaw = self.euler_from_quaternion(
+            self.vehicle_attitude[0], 
+            self.vehicle_attitude[1], 
+            self.vehicle_attitude[2], 
+            self.vehicle_attitude[3])
+        
+        # Get rotational matrix
+        self.rotation_from_world_to_drone = R.from_quat([x, y, z, w]).as_matrix()
+        """ self.get_logger().info(f"Rotation from quaternion: {r_from_quat.as_matrix()}")
+        r_from_euler = R.from_euler('xyz', [self.roll, self.pitch, self.yaw], degrees=True)
+        self.get_logger().info(f"Rotation from euler: {r_from_euler.as_matrix()}") """
+        
     def vehicle_local_position_callback(self, msg):
         # TODO: handle NED->ENU transformation 
         self.vehicle_local_position[0] = msg.y
@@ -203,6 +235,15 @@ class PX4Visualizer(Node):
         self.vehicle_local_angular_velocity[0] = msg.ay
         self.vehicle_local_angular_velocity[1] = msg.ax
         self.vehicle_local_angular_velocity[2] = -msg.az
+
+        position = np.array([
+            self.vehicle_local_position[0],
+            self.vehicle_local_position[1],
+            self.vehicle_local_position[2],
+        ])
+
+        if position is not None and self.rotation_from_world_to_drone is not None:
+            self.contact_detector.check_collision(position, self.rotation_from_world_to_drone)
 
     def trajectory_setpoint_callback(self, msg):
         self.setpoint_position[0] = msg.position[1]
@@ -308,6 +349,28 @@ class PX4Visualizer(Node):
         t = self.create_odom_tf(self.vehicle_local_position, self.vehicle_attitude, 'odom', 'base_link')
         # Send the transformation
         self.tf_broadcaster.sendTransform(t)
+    
+    def euler_from_quaternion(self, w, x, y, z):
+            """
+            Convert a quaternion into euler angles (roll, pitch, yaw)
+            roll is rotation around x in radians (counterclockwise)
+            pitch is rotation around y in radians (counterclockwise)
+            yaw is rotation around z in radians (counterclockwise)
+            """
+            t0 = +2.0 * (w * x + y * z)
+            t1 = +1.0 - 2.0 * (x * x + y * y)
+            roll_x = math.atan2(t0, t1)
+        
+            t2 = +2.0 * (w * y - z * x)
+            t2 = +1.0 if t2 > +1.0 else t2
+            t2 = -1.0 if t2 < -1.0 else t2
+            pitch_y = math.asin(t2)
+        
+            t3 = +2.0 * (w * z + x * y)
+            t4 = +1.0 - 2.0 * (y * y + z * z)
+            yaw_z = math.atan2(t3, t4)
+        
+            return np.rad2deg(roll_x), np.rad2deg(pitch_y), np.rad2deg(yaw_z) # in degrees
 
 
 def main(args=None):
