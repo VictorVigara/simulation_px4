@@ -50,7 +50,7 @@ def generate_launch_description():
             package='tf2_ros',
             executable='static_transform_publisher',
             name='base_link_to_mid360_tf',
-            arguments=['0', '0', '0.05', '0', '0', '0', 'base_link', 'mid360']
+            arguments=['0', '0', '0.1', '0', '0', '0', 'base_link', 'mid360']
         ),
         Node(
             package='simulation_px4',
