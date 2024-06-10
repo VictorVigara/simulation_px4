@@ -37,6 +37,7 @@ __contact__ = "jalim@ethz.ch"
 
 from re import M
 import numpy as np
+import uuid
 
 import rclpy
 from rclpy.node import Node
@@ -49,6 +50,9 @@ from px4_msgs.msg import TrajectorySetpoint
 from geometry_msgs.msg import PoseStamped, Point
 from nav_msgs.msg import Path
 from nav_msgs.msg import Odometry
+from sensor_msgs_py import point_cloud2
+from sensor_msgs.msg import PointCloud2, PointField
+
 
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import TransformStamped
@@ -72,6 +76,9 @@ class PX4Visualizer(Node):
 
     def __init__(self):
         super().__init__('px4_visualizer')
+
+        self.x_crop = 0.44
+        self.y_crop = 0.44
 
         ## Configure subscritpions
         qos_profile = QoSProfile(
@@ -98,12 +105,18 @@ class PX4Visualizer(Node):
             '/fmu/in/trajectory_setpoint',
             self.trajectory_setpoint_callback,
             qos_profile)
+        
+        self.octomap_pc2_sub = self.create_subscription(
+            PointCloud2, "/mid360_PointCloud2", self.octomap_pc2_callback, 10
+        )
 
         self.vehicle_pose_pub = self.create_publisher(PoseStamped, '/px4_visualizer/vehicle_pose', 10)
         self.vehicle_vel_pub = self.create_publisher(Marker, '/px4_visualizer/vehicle_velocity', 10)
         self.vehicle_path_pub = self.create_publisher(Path, '/px4_visualizer/vehicle_path', 10)
         self.setpoint_path_pub = self.create_publisher(Path, '/px4_visualizer/setpoint_path', 10)
         self.odometry_publisher = self.create_publisher(Odometry, '/odom', 10)
+        self.pc2_pub = self.create_publisher(PointCloud2, "mid360_filtered", 10)
+
 
         self.vehicle_attitude_px4 = np.array([1.0, 0.0, 0.0, 0.0])
         self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0.0])
@@ -115,6 +128,47 @@ class PX4Visualizer(Node):
         self.setpoint_path_msg = Path()
         timer_period = 0.05  # seconds
         self.timer = self.create_timer(timer_period, self.cmdloop_callback)
+
+    def octomap_pc2_callback(self, pointcloud: PointCloud2) -> None:
+
+        self.octomap_occupied_pointcloud = []
+        for p in point_cloud2.read_points(
+            pointcloud, field_names=("x", "y", "z"), skip_nans=True
+        ):
+            # Get XYZ coordinates to calculate vertical angle and filter by vertical scans
+            x = p[0]
+            y = p[1]
+            z = p[2]
+
+            if z > 0.2 and (
+                (x > self.x_crop or x < -self.x_crop)
+                or (y > self.y_crop or y < -self.y_crop)
+            ):
+                self.octomap_occupied_pointcloud.append([x, y, z])
+        
+        pc2_cropped = PointCloud2()
+        pc2_cropped.header = pointcloud.header
+        pc2_cropped.height = 1
+        pc2_cropped.width = len(self.octomap_occupied_pointcloud)
+        pc2_cropped.fields.append(
+            PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1)
+        )
+        pc2_cropped.fields.append(
+            PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1)
+        )
+        pc2_cropped.fields.append(
+            PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1)
+        )
+        pc2_cropped.is_bigendian = False
+        pc2_cropped.point_step = 12  # 4 (x) + 4 (y) + 4 (z) bytes per point
+        pc2_cropped.row_step = pc2_cropped.point_step * len(
+            self.octomap_occupied_pointcloud
+        )
+        pc2_cropped.data = np.array(
+            self.octomap_occupied_pointcloud, dtype=np.float32
+        ).tobytes()
+        self.pc2_pub.publish(pc2_cropped)
+        print("Publishing pc2 cropped ...")
     
     def quaternion_multiply(self, q1, q2):
         """ Multiply two quaternions. """
