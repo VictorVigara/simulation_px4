@@ -43,10 +43,10 @@ class FakeContactDetector():
         #self.logger().info(f"Distance to wall: {distance}")
         if distance <= self.ring_radius and self.is_point_in_square(drone_position):
             self.logger().info("COLLISION DETECTED")
-            self.calculate_colision_orientation(drone_position, rotation_matrix)
+            orientation, displacement = self.calculate_colision_orientation(drone_position, rotation_matrix)
 
-            return True
-        return False
+            return 1.0, orientation, displacement
+        return 0.0, 0.0, 0.0
 
     def calculate_colision_orientation(self, position, rotation): 
         """ 
@@ -57,10 +57,17 @@ class FakeContactDetector():
         # Transform collision point from world to drone frame
         translation_col_point_drone = self.projected_point-position
         collision_point_drone = np.dot(rotation.T, translation_col_point_drone)
+        dist_to_obstacle = np.linalg.norm(collision_point_drone)
+        displacement = self.ring_radius - dist_to_obstacle
+        if displacement > 3.0: 
+            displacement = 3.0
+
         orientation = np.rad2deg(np.arctan2(collision_point_drone[1], collision_point_drone[0]))
         if orientation < 0: 
             orientation += 360
         
         self.logger().info(f"Orientation: {orientation} deg, Distance: {np.linalg.norm(collision_point_drone)} m")
+
+        return orientation, displacement
 
 

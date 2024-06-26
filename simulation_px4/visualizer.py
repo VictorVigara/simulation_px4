@@ -54,6 +54,8 @@ from nav_msgs.msg import Path
 from nav_msgs.msg import Odometry
 from sensor_msgs_py import point_cloud2
 from sensor_msgs.msg import PointCloud2, PointField
+from std_msgs.msg import Float32MultiArray
+
 
 
 from visualization_msgs.msg import Marker
@@ -87,10 +89,10 @@ class PX4Visualizer(Node):
 
         # Fake obstacles
         self.ob1 = [
-            np.array([0, 0.4, 2]),
-            np.array([4, 0.4, 2]),
-            np.array([4, 0.4, -1]), 
-            np.array([0, 0.4, -1]), 
+            np.array([1, 0.5, 2]),
+            np.array([6, 0.5, 2]),
+            np.array([6, 0.5, -1]), 
+            np.array([1, 0.5, -1]), 
             ]
         self.ring_radius = 0.44
 
@@ -134,6 +136,7 @@ class PX4Visualizer(Node):
         self.setpoint_path_pub = self.create_publisher(Path, '/px4_visualizer/setpoint_path', 10)
         self.odometry_publisher = self.create_publisher(Odometry, '/odom', 10)
         self.pc2_pub = self.create_publisher(PointCloud2, "mid360_filtered", 10)
+        self.collision_publisher = self.create_publisher(Float32MultiArray, "/collision_detection", 10)
 
 
         self.vehicle_attitude_px4 = np.array([1.0, 0.0, 0.0, 0.0])
@@ -157,8 +160,8 @@ class PX4Visualizer(Node):
             x = p[0]
             y = p[1]
             z = p[2]
-
-            if z > 0.2 and (
+            # z > 0.2 and
+            if   (
                 (x > self.x_crop or x < -self.x_crop)
                 or (y > self.y_crop or y < -self.y_crop)
             ):
@@ -243,7 +246,11 @@ class PX4Visualizer(Node):
         ])
 
         if position is not None and self.rotation_from_world_to_drone is not None:
-            self.contact_detector.check_collision(position, self.rotation_from_world_to_drone)
+            col_detected, col_direction, col_displacement = self.contact_detector.check_collision(position, self.rotation_from_world_to_drone)
+
+            col_msg = Float32MultiArray()
+            col_msg.data = [col_detected, col_direction, col_displacement]
+            self.collision_publisher.publish(col_msg)
 
     def trajectory_setpoint_callback(self, msg):
         self.setpoint_position[0] = msg.position[1]
