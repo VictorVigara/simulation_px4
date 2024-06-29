@@ -260,7 +260,7 @@ class PX4Visualizer(Node):
     def create_arrow_marker(self, id, tail, vector):
         msg = Marker()
         msg.action = Marker.ADD
-        msg.header.frame_id = 'odom'
+        msg.header.frame_id = 'world'
         # msg.header.stamp = Clock().now().nanoseconds / 1000
         msg.ns = 'arrow'
         msg.id = id
@@ -288,7 +288,7 @@ class PX4Visualizer(Node):
         odom_msg = Odometry()
 
         #odom_msg.header.stamp = self.get_clock().now().to_msg()
-        odom_msg.header.frame_id = 'odom'
+        odom_msg.header.frame_id = 'world'
         
         # position
         odom_msg.pose.pose.position.x = self.vehicle_local_position[0]
@@ -331,7 +331,7 @@ class PX4Visualizer(Node):
         return t
     
     def cmdloop_callback(self):
-        vehicle_pose_msg = vector2PoseMsg('odom', self.vehicle_local_position, self.vehicle_attitude)
+        vehicle_pose_msg = vector2PoseMsg('world', self.vehicle_local_position, self.vehicle_attitude)
         self.vehicle_pose_pub.publish(vehicle_pose_msg)
 
         # Publish time history of the vehicle path
@@ -340,7 +340,7 @@ class PX4Visualizer(Node):
         self.vehicle_path_pub.publish(self.vehicle_path_msg)
 
         # Publish time history of the vehicle path
-        setpoint_pose_msg = vector2PoseMsg('odom', self.setpoint_position, self.vehicle_attitude)
+        setpoint_pose_msg = vector2PoseMsg('world', self.setpoint_position, self.vehicle_attitude)
         self.setpoint_path_msg.header = setpoint_pose_msg.header
         self.setpoint_path_msg.poses.append(setpoint_pose_msg)
         self.setpoint_path_pub.publish(self.setpoint_path_msg)
@@ -353,7 +353,7 @@ class PX4Visualizer(Node):
         odometry_msg = self.create_odom_msg()
         self.odometry_publisher.publish(odometry_msg)
 
-        t = self.create_odom_tf(self.vehicle_local_position, self.vehicle_attitude, 'odom', 'base_link')
+        t = self.create_odom_tf(self.vehicle_local_position, self.vehicle_attitude, 'world', 'base_link')
         # Send the transformation
         self.tf_broadcaster.sendTransform(t)
     
